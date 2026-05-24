@@ -4,6 +4,16 @@ A small CLI that exposes Claude Code skills kept across multiple source director
 
 Useful when you maintain skills in several repos (personal, work, experimental) and want Claude Code to discover all of them from one place without copying.
 
+## Install
+
+### Homebrew
+
+The Formula lives in this repo and can be installed directly
+
+```bash
+brew install --formula https://raw.githubusercontent.com/Mizumaki/skill-link/v0.1.0/Formula/skill-link.rb
+```
+
 ## Configuration
 
 Create `skill-dirs.conf` inside your Claude config directory (defaults to `~/.claude`, override with `CLAUDE_CONFIG_DIR`) listing the directories that contain your skill folders, one per line:
