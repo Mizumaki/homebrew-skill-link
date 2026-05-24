@@ -70,7 +70,7 @@ cmd_init() {
   fi
   mkdir -p "$CLAUDE_DIR"
   cat > "$CONF_FILE" <<'EOF'
-# skill-link configuration (https://github.com/Mizumaki/skill-link)
+# skill-link configuration (https://github.com/Mizumaki/homebrew-skill-link)
 #
 # Example:
 # ~/Documents/dev/personal-skills/skills

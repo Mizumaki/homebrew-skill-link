@@ -11,7 +11,8 @@ Useful when you maintain skills in several repos (personal, work, experimental) 
 The Formula lives in this repo and can be installed directly
 
 ```bash
-brew install --formula https://raw.githubusercontent.com/Mizumaki/skill-link/v0.1.0/Formula/skill-link.rb
+brew tap Mizumaki/homebrew-skill-link
+brew install skill-link
 ```
 
 ## Configuration
