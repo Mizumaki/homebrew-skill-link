@@ -35,4 +35,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Lint Formula style
-        run: brew style Formula/skill-link.rb || true
+        run: brew style Formula/skill-link.rb
