@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# skill-link — manage Claude Code skill symlinks
+#
+# Usage:
+#   skill-link init      Create an empty skill-dirs.conf template (no-op if
+#                        the file already exists)
+#   skill-link sync      Create symlinks for skills in configured dirs and
+#                        remove stale symlinks that no longer match the conf
+#   skill-link list      Show all skills and their link status
+#   skill-link clean     Remove broken symlinks from the skills directory
+#
+# Configuration:
+#   Add skill directory paths (one per line) to <claude-dir>/skill-dirs.conf
+#   Lines starting with # are comments.
+#   If the file does not exist, an error is raised.
+#
+#   The Claude config directory defaults to ~/.claude but can be overridden
+#   via the CLAUDE_CONFIG_DIR environment variable (matching Claude Code).
+
+set -euo pipefail
+
+VERSION="0.1.0"
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SKILLS_DIR="$CLAUDE_DIR/skills"
+CONF_FILE="$CLAUDE_DIR/skill-dirs.conf"
+
+usage() {
+  cat <<EOF
+Usage: skill-link <command>
+
+Commands:
+  init      Create skill-dirs.conf from a template (only if it does not exist)
+  sync      Create symlinks for skills in configured dirs and remove stale
+            symlinks (those whose source dir is no longer in conf)
+  list      Show all skills and their link status
+  clean     Remove broken symlinks
+
+Options:
+  --version Show version and exit
+  -h, --help Show this help and exit
+
+Configuration:
+  $CONF_FILE — list skill directory paths, one per line (# = comment)
+  Required. If not found, an error is shown with setup instructions.
+EOF
+}
+
+check_conf() {
+  if [[ ! -f "$CONF_FILE" ]]; then
+    echo "Error: $CONF_FILE not found." >&2
+    echo "Run 'skill-link init' to create it from a template." >&2
+    exit 1
+  fi
+}
+
+get_repos() {
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    eval echo "$line"
+  done < "$CONF_FILE"
+}
+
+cmd_init() {
+  if [[ -e "$CONF_FILE" ]]; then
+    echo "$CONF_FILE already exists. Leaving it untouched."
+    return
+  fi
+  mkdir -p "$CLAUDE_DIR"
+  cat > "$CONF_FILE" <<'EOF'
+# skill-link configuration (https://github.com/Mizumaki/skill-link)
+#
+# Example:
+# ~/Documents/dev/personal-skills/skills
+# ~/Documents/dev/work-skills/skills
+EOF
+  echo "Created $CONF_FILE"
+  echo "Edit it to list your skill directories, then run 'skill-link sync'."
+}
+
+cmd_install() {
+  check_conf
+  mkdir -p "$SKILLS_DIR"
+  local linked=0 kept=0 skipped=0
+  while IFS= read -r dir; do
+    if [[ ! -d "$dir" ]]; then
+      echo "  [warn] $dir not found, skipping."
+      continue
+    fi
+    for skill_path in "$dir"/*/; do
+      [[ -d "$skill_path" ]] || continue
+      local skill_name
+      skill_name="$(basename "$skill_path")"
+      local target="$SKILLS_DIR/$skill_name"
+      if [[ -L "$target" && -e "$target" ]]; then
+        echo "  [keep] $skill_name (already linked -> $(readlink "$target"))"
+        ((kept++)) || true
+      elif [[ -L "$target" && ! -e "$target" ]]; then
+        rm "$target"
+        ln -s "$skill_path" "$target"
+        echo "  [relink] $skill_name -> $skill_path (was broken)"
+        ((linked++)) || true
+      elif [[ -e "$target" ]]; then
+        echo "  [skip] $skill_name (exists but not a symlink)"
+        ((skipped++)) || true
+      else
+        ln -s "$skill_path" "$target"
+        echo "  [link] $skill_name -> $skill_path"
+        ((linked++)) || true
+      fi
+    done
+  done < <(get_repos)
+  echo ""
+  echo "Done: $linked linked, $kept kept, $skipped skipped."
+}
+
+cmd_list() {
+  check_conf
+
+  local -a conf_dirs=()
+  while IFS= read -r dir; do
+    conf_dirs+=("${dir%/}")
+  done < <(get_repos)
+
+  echo "Configured directories:"
+  for conf_dir in "${conf_dirs[@]+"${conf_dirs[@]}"}"; do
+    echo "  $conf_dir"
+  done
+  echo ""
+  echo "Skills in $SKILLS_DIR:"
+
+  local found=0
+  if [[ -d "$SKILLS_DIR" ]]; then
+    for entry in "$SKILLS_DIR"/*; do
+      [[ -e "$entry" || -L "$entry" ]] || continue
+      local name
+      name="$(basename "$entry")"
+      if [[ -L "$entry" ]]; then
+        local dest
+        dest="$(readlink "$entry")"
+        if [[ -e "$entry" ]]; then
+          echo "  [linked] $name -> $dest"
+        else
+          echo "  [broken] $name -> $dest (target missing)"
+        fi
+      else
+        echo "  [manual] $name"
+      fi
+      ((found++)) || true
+    done
+  fi
+
+  # Skills present in a conf dir but not yet linked under $SKILLS_DIR.
+  for conf_dir in "${conf_dirs[@]+"${conf_dirs[@]}"}"; do
+    [[ -d "$conf_dir" ]] || continue
+    for skill_path in "$conf_dir"/*/; do
+      [[ -d "$skill_path" ]] || continue
+      local skill_name target
+      skill_name="$(basename "$skill_path")"
+      target="$SKILLS_DIR/$skill_name"
+      if [[ ! -e "$target" && ! -L "$target" ]]; then
+        echo "  [unlinked] $skill_name -> ${skill_path%/} (run 'skill-link sync')"
+        ((found++)) || true
+      fi
+    done
+  done
+
+  [[ $found -gt 0 ]] || echo "  (none)"
+}
+
+cmd_sync() {
+  check_conf
+
+  # conf に記載されたディレクトリ一覧を取得
+  local -a conf_dirs=()
+  while IFS= read -r dir; do
+    conf_dirs+=("${dir%/}")
+  done < <(get_repos)
+
+  # 削除対象のシンボリックリンクを収集
+  local -a stale=()
+  if [[ -d "$SKILLS_DIR" ]]; then
+    for entry in "$SKILLS_DIR"/*; do
+      [[ -L "$entry" ]] || continue
+      local dest parent in_conf
+      dest="$(readlink "$entry")"
+      parent="$(dirname "${dest%/}")"
+      in_conf=false
+      for conf_dir in "${conf_dirs[@]+"${conf_dirs[@]}"}"; do
+        [[ "$parent" == "$conf_dir" ]] && in_conf=true && break
+      done
+      [[ "$in_conf" == false ]] && stale+=("$entry")
+    done
+  fi
+
+  # 削除対象がなければそのまま install へ
+  if [[ ${#stale[@]} -eq 0 ]]; then
+    echo "No stale symlinks found."
+    echo ""
+    cmd_install
+    return
+  fi
+
+  # 確認プロンプト
+  echo "The following symlinks will be removed:"
+  for entry in "${stale[@]}"; do
+    echo "  $(basename "$entry") -> $(readlink "$entry")"
+  done
+  echo ""
+  if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 0
+  fi
+  echo ""
+
+  # 削除実行
+  local removed=0
+  for entry in "${stale[@]}"; do
+    local name
+    name="$(basename "$entry")"
+    rm "$entry"
+    echo "  [removed] $name"
+    ((removed++)) || true
+  done
+  echo "$removed symlink(s) removed."
+  echo ""
+
+  cmd_install
+}
+
+cmd_clean() {
+  if [[ ! -d "$SKILLS_DIR" ]]; then
+    echo "No $SKILLS_DIR directory found."
+    return
+  fi
+  local removed=0
+  for entry in "$SKILLS_DIR"/*; do
+    [[ -L "$entry" ]] || continue
+    if [[ ! -e "$entry" ]]; then
+      local name
+      name="$(basename "$entry")"
+      rm "$entry"
+      echo "  [removed] $name (broken symlink)"
+      ((removed++)) || true
+    fi
+  done
+  echo "Done: $removed broken symlinks removed."
+}
+
+case "${1:-}" in
+  init)            cmd_init ;;
+  sync)            cmd_sync ;;
+  list)            cmd_list ;;
+  clean)           cmd_clean ;;
+  --version)       echo "skill-link $VERSION" ;;
+  -h|--help)       usage ;;
+  *)               usage; exit 1 ;;
+esac
