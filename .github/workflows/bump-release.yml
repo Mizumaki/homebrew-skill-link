@@ -1,0 +1,109 @@
+name: Bump and release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version without v prefix (e.g. 1.0.1)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      TAG: v${{ inputs.version }}
+      TARBALL_REPO: Mizumaki/homebrew-skill-link
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Validate version
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid semver: $VERSION"
+            exit 1
+          fi
+          current=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' bin/skill-link)
+          if [ "$VERSION" = "$current" ]; then
+            echo "Version unchanged: $current"
+            exit 1
+          fi
+          git fetch --tags
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+            exit 1
+          fi
+
+      - name: Install bats and shellcheck
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck
+
+      - name: Bump version strings
+        run: |
+          sed -i "s/^VERSION=\".*\"\$/VERSION=\"$VERSION\"/" bin/skill-link
+          sed -i "s/skill-link [0-9]\+\.[0-9]\+\.[0-9]\+/skill-link $VERSION/g" tests/basic.bats
+
+      - name: make check
+        run: make check
+
+      - name: Configure git
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Commit and push bump to main
+        run: |
+          git add bin/skill-link tests/basic.bats
+          git commit -m "Bump up version to $TAG"
+          git push origin HEAD:main
+
+      - name: Tag and push
+        run: |
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+
+      - name: Compute tarball sha256
+        id: sha
+        run: |
+          sha=""
+          for i in 1 2 3 4 5; do
+            if sha=$(curl -fsSL "https://github.com/$TARBALL_REPO/archive/refs/tags/$TAG.tar.gz" | shasum -a 256 | awk '{print $1}'); then
+              if [ -n "$sha" ]; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+          if [ -z "$sha" ]; then
+            echo "Failed to fetch tarball after retries"
+            exit 1
+          fi
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Update Formula
+        env:
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          sed -i "s|url \".*\"|url \"https://github.com/$TARBALL_REPO/archive/refs/tags/$TAG.tar.gz\"|" Formula/skill-link.rb
+          sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|" Formula/skill-link.rb
+
+      - name: Open Formula update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          branch="release/formula-$TAG"
+          git checkout -b "$branch"
+          git add Formula/skill-link.rb
+          git commit -m "Update Formula to $TAG"
+          git push origin "$branch"
+          body=$(printf 'Automated Formula bump for %s.\n\nsha256: `%s`\n' "$TAG" "$SHA256")
+          gh pr create --base main --head "$branch" \
+            --title "Update Formula to $TAG" \
+            --body "$body"
