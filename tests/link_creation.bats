@@ -52,6 +52,7 @@ teardown() {
   write_conf "$SRC"
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
+  [[ "$output" == *"[link] alpha"* ]]
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]

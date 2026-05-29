@@ -111,7 +111,7 @@ teardown() {
   [ -L "$SKILLS/keepme" ]
 }
 
-@test "name collision: parent entry wins, skill entry becomes keep" {
+@test "name collision: first conf entry wins (parent first)" {
   make_skill "$SRC" dupe
   make_skill_with_md "$HOME/standalone/dupe"
   # Parent listed first so its `dupe` is linked first.
@@ -124,6 +124,22 @@ teardown() {
   local dest
   dest="$(readlink "$SKILLS/dupe")"
   [[ "$dest" == "$SRC/dupe/" ]]
+  [[ "$output" == *"[link] dupe"* ]]
+  [[ "$output" == *"[keep] dupe"* ]]
+}
+
+@test "name collision: first conf entry wins (skill: first)" {
+  make_skill "$SRC" dupe
+  make_skill_with_md "$HOME/standalone/dupe"
+  # skill: listed first so the standalone dupe is linked first.
+  write_conf "skill: $HOME/standalone/dupe" "$SRC"
+
+  run "$SCRIPT" sync
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS/dupe" ]
+  local dest
+  dest="$(readlink "$SKILLS/dupe")"
+  [[ "$dest" == "$HOME/standalone/dupe/" ]]
   [[ "$output" == *"[link] dupe"* ]]
   [[ "$output" == *"[keep] dupe"* ]]
 }
