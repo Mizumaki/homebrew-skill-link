@@ -35,6 +35,17 @@ export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
 
 `skill-link` will then read `$CLAUDE_CONFIG_DIR/skill-dirs.conf` and write symlinks under `$CLAUDE_CONFIG_DIR/skills/`.
 
+### Linking a single skill
+
+If a skill lives in a repo whose layout doesn't fit the "parent directory of many skills" model, prefix the entry with `skill:` and point it at the skill directory itself:
+
+```
+~/Documents/dev/personal-skills/skills
+skill: ~/Documents/dev/work/special-skill
+```
+
+A `skill:` entry must point to a directory containing `SKILL.md` — otherwise `skill-link` prints a `[warn]` and skips it. The link is created as `~/.claude/skills/<basename>`. Removing a `skill:` line from `skill-dirs.conf` makes the corresponding link a stale-removal candidate on the next `sync`.
+
 ## Usage
 
 ```bash
