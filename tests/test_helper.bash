@@ -35,3 +35,11 @@ write_conf() {
 make_skill() {
   mkdir -p "$1/$2"
 }
+
+# Create a skill directory at <path> with an empty SKILL.md, so it satisfies
+# the validity check used by `skill:` conf entries.
+# Usage: make_skill_with_md <path>
+make_skill_with_md() {
+  mkdir -p "$1"
+  : > "$1/SKILL.md"
+}

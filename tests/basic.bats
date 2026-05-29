@@ -27,10 +27,17 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "removed 'install' subcommand is rejected" {
+  run "$SCRIPT" install
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Usage"* ]]
+}
+
 @test "list without conf errors with setup hint" {
   tmp="$(mktemp -d)"
   HOME="$tmp" run "$SCRIPT" list
   rm -rf "$tmp"
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
+  [[ "$output" == *"skill-link init"* ]]
 }

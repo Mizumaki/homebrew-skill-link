@@ -13,8 +13,7 @@ teardown() {
 @test "clean reports when skills dir does not exist" {
   run "$SCRIPT" clean
   [ "$status" -eq 0 ]
-  [[ "$output" == *"No"* ]]
-  [[ "$output" == *"directory found"* ]]
+  [[ "$output" == *"No $SKILLS directory found."* ]]
 }
 
 @test "clean succeeds with no symlinks present" {
