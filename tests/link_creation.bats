@@ -112,6 +112,7 @@ teardown() {
   {
     echo "# this is a comment"
     echo ""
+    echo "[dirs]"
     echo "$SRC"
     echo "   "
     echo "# another comment"
@@ -128,6 +129,7 @@ teardown() {
   {
     printf '   # leading-space comment\n'
     printf '\t# tab-indented comment\n'
+    printf '[dirs]\n'
     printf '%s\n' "$SRC"
   } > "$CONF"
 
@@ -143,6 +145,7 @@ teardown() {
   {
     printf '\t\t\n'
     printf '   \n'
+    printf '[dirs]\n'
     printf '%s\n' "$SRC"
   } > "$CONF"
 

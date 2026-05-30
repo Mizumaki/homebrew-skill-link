@@ -18,6 +18,10 @@
 
 テストを書かずに `bin/skill-link` を編集してはならない。先にテストを失敗させてから実装に入る。
 
+## バージョン bump はしない
+
+`bin/skill-link` の `VERSION`、`Formula/skill-link.rb` の `url` / `sha256` / `test` 内バージョン文字列、`tests/basic.bats` の version 期待値は **手動で変更しないこと**。リリースは `.github/workflows/` のリリースワークフロー側で一括して bump するため、機能変更の PR では現行バージョンのままにしておく。
+
 ## よく使うコマンド
 
 ```bash

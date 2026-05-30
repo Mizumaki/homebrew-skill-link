@@ -5,7 +5,7 @@ _skill_link_common_setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../bin/skill-link"
   TMP_HOME="$(mktemp -d)"
   export HOME="$TMP_HOME"
-  CONF="$HOME/.claude/skill-dirs.conf"
+  CONF="$HOME/.claude/skill-link.conf"
   SKILLS="$HOME/.claude/skills"
   mkdir -p "$HOME/.claude"
 }
@@ -21,13 +21,45 @@ _skill_link_common_teardown() {
   esac
 }
 
-# Write conf lines. Usage: write_conf "/path/one" "/path/two"
+# Write a fresh conf with the given parent-dir entries (no prefixes).
+# Usage: write_conf "/path/one" "/path/two"
 write_conf() {
   : > "$CONF"
-  local line
-  for line in "$@"; do
-    printf '%s\n' "$line" >> "$CONF"
-  done
+  if (( $# > 0 )); then
+    printf '[dirs]\n' >> "$CONF"
+    local line
+    for line in "$@"; do
+      printf '%s\n' "$line" >> "$CONF"
+    done
+  fi
+}
+
+# Append a [dirs] entry. Prefix is optional.
+# Usage: write_dirs_entry <path> [<prefix>]
+write_dirs_entry() {
+  local path="$1" prefix="${2:-}"
+  if ! grep -q '^\[dirs\]' "$CONF" 2>/dev/null; then
+    printf '[dirs]\n' >> "$CONF"
+  fi
+  if [[ -n "$prefix" ]]; then
+    printf '%s = %s\n' "$prefix" "$path" >> "$CONF"
+  else
+    printf '%s\n' "$path" >> "$CONF"
+  fi
+}
+
+# Append a [skills] entry. Prefix is optional.
+# Usage: write_skill_entry <path> [<prefix>]
+write_skill_entry() {
+  local path="$1" prefix="${2:-}"
+  if ! grep -q '^\[skills\]' "$CONF" 2>/dev/null; then
+    printf '[skills]\n' >> "$CONF"
+  fi
+  if [[ -n "$prefix" ]]; then
+    printf '%s = %s\n' "$prefix" "$path" >> "$CONF"
+  else
+    printf '%s\n' "$path" >> "$CONF"
+  fi
 }
 
 # Create an empty skill directory under a conf dir.
