@@ -51,7 +51,10 @@ work = ~/Documents/dev/work-skills/skills
 work = ~/Documents/dev/work/slack-helper
 ```
 
-A `personal`-prefixed `[dirs]` entry whose path contains `tdd/` produces `~/.claude/skills/personal:tdd`, so the skill can be invoked as `personal:tdd`. Prefixes must match `[A-Za-z0-9_-]+`; `:` and whitespace are not allowed in a prefix. Unprefixed and prefixed entries with the same basename can coexist.
+A `personal`-prefixed `[dirs]` entry whose path contains `tdd/` produces `~/.claude/skills/personal:tdd`. Prefixes must match `[A-Za-z0-9_-]+`; `:` and whitespace are not allowed in a prefix. Unprefixed and prefixed entries with the same basename can coexist.
+
+> [!NOTE]
+> The prefix changes the **invocation name** (the directory name under `~/.claude/skills/`, e.g. `personal:tdd`), but Claude Code's **skill recommender** surfaces skills by the `name:` field inside each `SKILL.md` frontmatter. Two skills whose `SKILL.md` both declare `name: tdd` will compete for the same recommendation slot even when their directories are `personal:tdd` and `work:tdd`. If you want a prefixed skill to also be recommended under its prefixed identity, edit `SKILL.md`'s `name:` to match (e.g. `name: personal:tdd`).
 
 ## Usage
 
