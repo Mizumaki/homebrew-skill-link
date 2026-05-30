@@ -22,9 +22,12 @@ teardown() {
   [ -f "$CONF" ]
   [[ "$output" == *"Created"* ]]
   [[ "$output" == *"$CONF"* ]]
-  # Template should be a valid (empty-of-real-entries) conf: only comments/blanks.
-  run grep -vE '^[[:space:]]*(#|$)' "$CONF"
-  [ "$status" -ne 0 ]
+  # Freshly init'ed template must be a no-op when synced: empty [dirs]/[skills]
+  # sections, all example entries commented out.
+  run "$SCRIPT" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Done: 0 linked, 0 kept, 0 skipped."* ]]
+  [[ "$output" != *"[warn]"* ]]
 }
 
 @test "init leaves an existing skill-link.conf untouched" {

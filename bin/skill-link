@@ -162,11 +162,11 @@ cmd_init() {
 # "<prefix>:<name>" — e.g. matt = ~/dev/personal-skills/skills produces
 # ~/.claude/skills/matt:<subdir> entries.
 #
-# [dirs]
+[dirs]
 # ~/Documents/dev/personal-skills/skills
 # work = ~/Documents/dev/work-skills/skills
-#
-# [skills]
+
+[skills]
 # ~/Documents/dev/work/special-skill
 # matt = ~/Documents/dev/personal/tdd-skill
 EOF
