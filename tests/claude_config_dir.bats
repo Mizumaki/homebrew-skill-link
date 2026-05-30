@@ -11,7 +11,7 @@ setup() {
   export HOME="$TMP_HOME"
   export CLAUDE_CONFIG_DIR="$TMP_HOME/custom-claude"
   mkdir -p "$CLAUDE_CONFIG_DIR"
-  CONF="$CLAUDE_CONFIG_DIR/skill-dirs.conf"
+  CONF="$CLAUDE_CONFIG_DIR/skill-link.conf"
   SKILLS="$CLAUDE_CONFIG_DIR/skills"
   SRC="$HOME/src"
   mkdir -p "$SRC"
@@ -45,7 +45,7 @@ teardown() {
   rm -f "$CONF"
   run "$SCRIPT" list
   [ "$status" -ne 0 ]
-  [[ "$output" == *"$CLAUDE_CONFIG_DIR/skill-dirs.conf"* ]]
+  [[ "$output" == *"$CLAUDE_CONFIG_DIR/skill-link.conf"* ]]
   [[ "$output" == *"not found"* ]]
 }
 

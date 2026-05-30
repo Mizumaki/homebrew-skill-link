@@ -17,39 +17,46 @@ brew install skill-link
 
 ## Configuration
 
-Create `skill-dirs.conf` inside your Claude config directory (defaults to `~/.claude`, override with `CLAUDE_CONFIG_DIR`) listing the directories that contain your skill folders, one per line:
+Create `skill-link.conf` inside your Claude config directory (defaults to `~/.claude`, override with `CLAUDE_CONFIG_DIR`). It uses two INI-style sections — `[dirs]` for parent directories whose subdirectories are each a skill, and `[skills]` for single skill directories. Lines starting with `#` are comments.
 
 ```
+[dirs]
 ~/Documents/dev/personal-skills/skills
 ~/Documents/dev/work-skills/skills
+
+[skills]
+~/Documents/dev/work/special-skill
 ```
 
-Each direct subdirectory of a listed path is treated as one skill. Lines that start with `#` are comments.
+Each direct subdirectory of a `[dirs]` path is linked as `~/.claude/skills/<subdir>`. Each `[skills]` path must itself contain `SKILL.md` and is linked as `~/.claude/skills/<basename>`; otherwise `skill-link` prints a `[warn]` and skips it. Removing an entry from `skill-link.conf` makes the corresponding link a stale-removal candidate on the next `sync`.
 
-If you use a non-default Claude config directory, set `CLAUDE_CONFIG_DIR` (the same variable Claude Code itself honors)
-e.g.
+If you use a non-default Claude config directory, set `CLAUDE_CONFIG_DIR` (the same variable Claude Code itself honors), e.g.
 
 ```bash
 export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
 ```
 
-`skill-link` will then read `$CLAUDE_CONFIG_DIR/skill-dirs.conf` and write symlinks under `$CLAUDE_CONFIG_DIR/skills/`.
+`skill-link` will then read `$CLAUDE_CONFIG_DIR/skill-link.conf` and write symlinks under `$CLAUDE_CONFIG_DIR/skills/`.
 
-### Linking a single skill
+### Namespacing skills with a prefix
 
-If a skill lives in a repo whose layout doesn't fit the "parent directory of many skills" model, prefix the entry with `skill:` and point it at the skill directory itself:
+Any entry in either section may be written as `<prefix> = <path>`. The resulting symlink is named `<prefix>:<basename>`, matching the way plugin-namespaced skills already appear to Claude Code.
 
 ```
-~/Documents/dev/personal-skills/skills
-skill: ~/Documents/dev/work/special-skill
+[dirs]
+personal = ~/Documents/dev/personal-skills/skills
+work = ~/Documents/dev/work-skills/skills
+
+[skills]
+work = ~/Documents/dev/work/slack-helper
 ```
 
-A `skill:` entry must point to a directory containing `SKILL.md` — otherwise `skill-link` prints a `[warn]` and skips it. The link is created as `~/.claude/skills/<basename>`. Removing a `skill:` line from `skill-dirs.conf` makes the corresponding link a stale-removal candidate on the next `sync`.
+A `personal`-prefixed `[dirs]` entry whose path contains `tdd/` produces `~/.claude/skills/personal:tdd`, so the skill can be invoked as `personal:tdd`. Prefixes must match `[A-Za-z0-9_-]+`; `:` and whitespace are not allowed in a prefix. Unprefixed and prefixed entries with the same basename can coexist.
 
 ## Usage
 
 ```bash
-skill-link init      # create skill-dirs.conf from a template if it does not
+skill-link init      # create skill-link.conf from a template if it does not
                      # already exist
 skill-link sync      # create symlinks under $CLAUDE_CONFIG_DIR/skills/ and
                      # remove stale symlinks whose source dir is no longer in conf
@@ -65,15 +72,15 @@ Editing files inside a linked skill takes effect immediately — no re-sync need
 
 `sync` and `clean` both delete symlinks, but they use different criteria and cover different failure modes.
 
-- `sync` removes **stale** links — those whose parent directory is no longer listed in `skill-dirs.conf`. It does not check whether the link target still exists on disk.
-- `clean` removes **broken** links — those whose target no longer exists, regardless of what `skill-dirs.conf` says. It does not read the conf at all and does not prompt for confirmation.
+- `sync` removes **stale** links — those whose parent directory is no longer listed in `skill-link.conf`. It does not check whether the link target still exists on disk.
+- `clean` removes **broken** links — those whose target no longer exists, regardless of what `skill-link.conf` says. It does not read the conf at all and does not prompt for confirmation.
 
 This means there are cases `sync` cannot clean up by itself, and you need `clean` to finish the job:
 
 - You deleted or renamed a single skill directory under a conf-listed parent. The symlink's parent path is still in conf, so `sync` leaves it alone, and the link creation loop never sees the old name, so it stays broken.
 - You moved or renamed the parent directory itself. The recorded link parent still string-matches the (now stale) conf entry, so `sync` keeps the link; the link-creation phase just prints `[warn] ... not found, skipping.` and never relinks.
 
-In both cases run `skill-link clean` to drop the broken links. (For the second case, also update `skill-dirs.conf` to the new path and run `sync` again.)
+In both cases run `skill-link clean` to drop the broken links. (For the second case, also update `skill-link.conf` to the new path and run `sync` again.)
 
 The split is intentional: a missing target can mean "the source is genuinely gone" or "an external drive is temporarily unmounted," so `sync` deliberately avoids deleting links just because the target is currently unreachable. `clean` is the explicit opt-in for that cleanup.
 

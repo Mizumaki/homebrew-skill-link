@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Behavior of single-skill conf entries (lines prefixed with `skill:`).
+# Behavior of single-skill entries (under the [skills] section).
 
 load test_helper
 
@@ -16,7 +16,7 @@ teardown() {
 
 @test "sync links a single-skill entry by basename" {
   make_skill_with_md "$HOME/standalone/my-skill"
-  write_conf "skill: $HOME/standalone/my-skill"
+  write_skill_entry "$HOME/standalone/my-skill"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -29,7 +29,8 @@ teardown() {
 @test "sync handles a mix of parent and skill entries in one pass" {
   make_skill "$SRC" alpha
   make_skill_with_md "$HOME/standalone/solo"
-  write_conf "$SRC" "skill: $HOME/standalone/solo"
+  write_dirs_entry "$SRC"
+  write_skill_entry "$HOME/standalone/solo"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -39,7 +40,7 @@ teardown() {
 }
 
 @test "sync warns and skips a skill entry whose path is missing" {
-  write_conf "skill: $HOME/does/not/exist"
+  write_skill_entry "$HOME/does/not/exist"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -50,7 +51,7 @@ teardown() {
 
 @test "sync warns and skips a skill entry that lacks SKILL.md" {
   mkdir -p "$HOME/standalone/no-md"
-  write_conf "skill: $HOME/standalone/no-md"
+  write_skill_entry "$HOME/standalone/no-md"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -61,7 +62,7 @@ teardown() {
 
 @test "sync expands ~ in skill entries" {
   make_skill_with_md "$HOME/standalone/tilde-skill"
-  write_conf 'skill: ~/standalone/tilde-skill'
+  write_skill_entry '~/standalone/tilde-skill'
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -69,26 +70,14 @@ teardown() {
   [ -d "$SKILLS/tilde-skill" ]
 }
 
-@test "sync tolerates whitespace around the skill: prefix" {
-  make_skill_with_md "$HOME/standalone/spaced"
-  {
-    printf '   skill:   %s   \n' "$HOME/standalone/spaced"
-  } > "$CONF"
-
-  run "$SCRIPT" sync
-  [ "$status" -eq 0 ]
-  [ -L "$SKILLS/spaced" ]
-  [[ "$output" == *"Done: 1 linked"* ]]
-}
-
 @test "sync flags a removed skill entry as stale" {
   make_skill_with_md "$HOME/standalone/temp-skill"
-  write_conf "skill: $HOME/standalone/temp-skill"
+  write_skill_entry "$HOME/standalone/temp-skill"
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
   [ -L "$SKILLS/temp-skill" ]
 
-  # User removes the line from conf.
+  # User removes the entry from conf.
   : > "$CONF"
 
   run bash -c "echo y | '$SCRIPT' sync"
@@ -100,7 +89,7 @@ teardown() {
 
 @test "sync leaves an in-conf skill entry alone across re-runs" {
   make_skill_with_md "$HOME/standalone/keepme"
-  write_conf "skill: $HOME/standalone/keepme"
+  write_skill_entry "$HOME/standalone/keepme"
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
 
@@ -114,13 +103,13 @@ teardown() {
 @test "name collision: first conf entry wins (parent first)" {
   make_skill "$SRC" dupe
   make_skill_with_md "$HOME/standalone/dupe"
-  # Parent listed first so its `dupe` is linked first.
-  write_conf "$SRC" "skill: $HOME/standalone/dupe"
+  # [dirs] listed first so its `dupe` is linked first.
+  write_dirs_entry "$SRC"
+  write_skill_entry "$HOME/standalone/dupe"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
   [ -L "$SKILLS/dupe" ]
-  # Link should still point inside the parent dir (linked first).
   local dest
   dest="$(readlink "$SKILLS/dupe")"
   [[ "$dest" == "$SRC/dupe/" ]]
@@ -128,11 +117,12 @@ teardown() {
   [[ "$output" == *"[keep] dupe"* ]]
 }
 
-@test "name collision: first conf entry wins (skill: first)" {
+@test "name collision: first conf entry wins ([skills] first)" {
   make_skill "$SRC" dupe
   make_skill_with_md "$HOME/standalone/dupe"
-  # skill: listed first so the standalone dupe is linked first.
-  write_conf "skill: $HOME/standalone/dupe" "$SRC"
+  # [skills] listed first so the standalone dupe is linked first.
+  write_skill_entry "$HOME/standalone/dupe"
+  write_dirs_entry "$SRC"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -144,15 +134,15 @@ teardown() {
   [[ "$output" == *"[keep] dupe"* ]]
 }
 
-@test "list shows 'Configured skills' only when at least one skill: entry exists" {
+@test "list shows 'Configured skills' only when at least one [skills] entry exists" {
   make_skill "$SRC" alpha
-  write_conf "$SRC"
+  write_dirs_entry "$SRC"
   run "$SCRIPT" list
   [ "$status" -eq 0 ]
   [[ "$output" != *"Configured skills:"* ]]
 
   make_skill_with_md "$HOME/standalone/solo"
-  write_conf "$SRC" "skill: $HOME/standalone/solo"
+  write_skill_entry "$HOME/standalone/solo"
   run "$SCRIPT" list
   [ "$status" -eq 0 ]
   [[ "$output" == *"Configured skills:"* ]]
@@ -161,7 +151,7 @@ teardown() {
 
 @test "list reports a not-yet-synced skill entry as unlinked" {
   make_skill_with_md "$HOME/standalone/pending"
-  write_conf "skill: $HOME/standalone/pending"
+  write_skill_entry "$HOME/standalone/pending"
 
   run "$SCRIPT" list
   [ "$status" -eq 0 ]

@@ -49,7 +49,7 @@ teardown() {
   [[ "$output" == *"Done: 0 broken symlinks removed."* ]]
 }
 
-@test "clean does not require skill-dirs.conf" {
+@test "clean does not require skill-link.conf" {
   mkdir -p "$SKILLS"
   ln -s "$HOME/missing" "$SKILLS/bad"
   [ ! -f "$CONF" ]
