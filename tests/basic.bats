@@ -7,7 +7,7 @@ setup() {
 @test "version flag prints version" {
   run "$SCRIPT" --version
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skill-link 1.1.0"* ]]
+  [[ "$output" == *"skill-link 1.2.0"* ]]
 }
 
 @test "help flag prints usage" {
