@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-VERSION="1.2.1"
+VERSION="1.3.0"
 
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/skill-link"
 CONF_FILE="$CONF_DIR/skill-link.conf"
