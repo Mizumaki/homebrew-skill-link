@@ -24,10 +24,12 @@ _skill_link_common_teardown() {
   esac
 }
 
-# Write a fresh conf containing only a [targets] section that lists $SKILLS.
-# Usage: write_targets
+# Write a fresh conf containing only a [targets] section. Lists $SKILLS
+# when no target is given.
+# Usage: write_targets [<target>...]
 write_targets() {
-  printf '[targets]\n%s\n' "$SKILLS" > "$CONF"
+  printf '[targets]\n' > "$CONF"
+  printf '%s\n' "${@:-$SKILLS}" >> "$CONF"
 }
 
 # Write a fresh conf with the default target and the given parent-dir entries
@@ -50,7 +52,7 @@ write_conf() {
 write_dirs_entry() {
   local path="$1" prefix="${2:-}"
   [[ -f "$CONF" ]] || write_targets
-  if ! grep -q '^\[dirs\]' "$CONF" 2>/dev/null; then
+  if ! grep -q '^\[dirs\]' "$CONF"; then
     printf '[dirs]\n' >> "$CONF"
   fi
   if [[ -n "$prefix" ]]; then
@@ -66,7 +68,7 @@ write_dirs_entry() {
 write_skill_entry() {
   local path="$1" prefix="${2:-}"
   [[ -f "$CONF" ]] || write_targets
-  if ! grep -q '^\[skills\]' "$CONF" 2>/dev/null; then
+  if ! grep -q '^\[skills\]' "$CONF"; then
     printf '[skills]\n' >> "$CONF"
   fi
   if [[ -n "$prefix" ]]; then
