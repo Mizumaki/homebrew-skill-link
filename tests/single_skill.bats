@@ -78,7 +78,7 @@ teardown() {
   [ -L "$SKILLS/temp-skill" ]
 
   # User removes the entry from conf.
-  : > "$CONF"
+  write_conf
 
   run bash -c "echo y | '$SCRIPT' sync"
   [ "$status" -eq 0 ]

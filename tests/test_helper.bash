@@ -1,13 +1,16 @@
 # Shared helpers for skill-link bats tests.
-# Each test gets a sandboxed HOME so no real ~/.claude state is touched.
+# Each test gets a sandboxed HOME (and XDG_CONFIG_HOME) so no real conf or
+# skills tree is touched.
 
 _skill_link_common_setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../bin/skill-link"
   TMP_HOME="$(mktemp -d)"
   export HOME="$TMP_HOME"
-  CONF="$HOME/.claude/skill-link.conf"
+  export XDG_CONFIG_HOME="$HOME/.config"
+  CONF="$XDG_CONFIG_HOME/skill-link/skill-link.conf"
+  # Default single target used by most tests.
   SKILLS="$HOME/.claude/skills"
-  mkdir -p "$HOME/.claude"
+  mkdir -p "$(dirname "$CONF")"
 }
 
 _skill_link_common_teardown() {
@@ -21,10 +24,19 @@ _skill_link_common_teardown() {
   esac
 }
 
-# Write a fresh conf with the given parent-dir entries (no prefixes).
+# Write a fresh conf containing only a [targets] section. Lists $SKILLS
+# when no target is given.
+# Usage: write_targets [<target>...]
+write_targets() {
+  printf '[targets]\n' > "$CONF"
+  printf '%s\n' "${@:-$SKILLS}" >> "$CONF"
+}
+
+# Write a fresh conf with the default target and the given parent-dir entries
+# (no prefixes). With no arguments, the conf has the target only.
 # Usage: write_conf "/path/one" "/path/two"
 write_conf() {
-  : > "$CONF"
+  write_targets
   if (( $# > 0 )); then
     printf '[dirs]\n' >> "$CONF"
     local line
@@ -34,11 +46,13 @@ write_conf() {
   fi
 }
 
-# Append a [dirs] entry. Prefix is optional.
+# Append a [dirs] entry. Prefix is optional. Seeds the default target when
+# the conf does not exist yet.
 # Usage: write_dirs_entry <path> [<prefix>]
 write_dirs_entry() {
   local path="$1" prefix="${2:-}"
-  if ! grep -q '^\[dirs\]' "$CONF" 2>/dev/null; then
+  [[ -f "$CONF" ]] || write_targets
+  if ! grep -q '^\[dirs\]' "$CONF"; then
     printf '[dirs]\n' >> "$CONF"
   fi
   if [[ -n "$prefix" ]]; then
@@ -48,11 +62,13 @@ write_dirs_entry() {
   fi
 }
 
-# Append a [skills] entry. Prefix is optional.
+# Append a [skills] entry. Prefix is optional. Seeds the default target when
+# the conf does not exist yet.
 # Usage: write_skill_entry <path> [<prefix>]
 write_skill_entry() {
   local path="$1" prefix="${2:-}"
-  if ! grep -q '^\[skills\]' "$CONF" 2>/dev/null; then
+  [[ -f "$CONF" ]] || write_targets
+  if ! grep -q '^\[skills\]' "$CONF"; then
     printf '[skills]\n' >> "$CONF"
   fi
   if [[ -n "$prefix" ]]; then

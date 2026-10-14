@@ -62,7 +62,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -L "$SKILLS/matt:tdd" ]
 
-  : > "$CONF"
+  write_conf
   run bash -c "echo y | '$SCRIPT' sync"
   [ "$status" -eq 0 ]
   [[ "$output" == *"will be removed"* ]]

@@ -109,6 +109,7 @@ teardown() {
 
 @test "sync ignores blank lines and # comments in conf" {
   make_skill "$SRC" alpha
+  write_targets
   {
     echo "# this is a comment"
     echo ""
@@ -116,7 +117,7 @@ teardown() {
     echo "$SRC"
     echo "   "
     echo "# another comment"
-  } > "$CONF"
+  } >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -126,12 +127,13 @@ teardown() {
 
 @test "sync ignores comments with leading whitespace" {
   make_skill "$SRC" alpha
+  write_targets
   {
     printf '   # leading-space comment\n'
     printf '\t# tab-indented comment\n'
     printf '[dirs]\n'
     printf '%s\n' "$SRC"
-  } > "$CONF"
+  } >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
@@ -142,12 +144,13 @@ teardown() {
 
 @test "sync ignores blank lines containing only tabs/spaces" {
   make_skill "$SRC" alpha
+  write_targets
   {
     printf '\t\t\n'
     printf '   \n'
     printf '[dirs]\n'
     printf '%s\n' "$SRC"
-  } > "$CONF"
+  } >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]

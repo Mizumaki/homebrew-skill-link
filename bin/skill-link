@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# skill-link — manage Claude Code skill symlinks
+# skill-link — manage agent skill symlinks (Claude Code, Codex, ...)
 #
 # Usage:
 #   skill-link init      Create an empty skill-link.conf template (no-op if
@@ -7,33 +7,43 @@
 #   skill-link sync      Create symlinks for skills in configured dirs and
 #                        remove stale symlinks that no longer match the conf
 #   skill-link list      Show all skills and their link status
-#   skill-link clean     Remove broken symlinks from the skills directory
+#   skill-link clean     Remove broken symlinks from every target
 #
 # Configuration:
-#   <claude-dir>/skill-link.conf — INI-style sections, # = comment.
-#   Two sections:
+#   ${XDG_CONFIG_HOME:-~/.config}/skill-link/skill-link.conf
+#   INI-style sections, # = comment. Three sections:
+#     [targets] Each line points to a skills directory an agent reads
+#               (e.g. ~/.claude/skills, ~/.agents/skills). Every skill is
+#               linked into every target. At least one target is required.
 #     [dirs]    Each line points to a parent directory; every direct
 #               subdirectory is linked as a skill.
 #     [skills]  Each line points to a single skill directory containing
 #               SKILL.md.
 #
-#   Within either section, two line forms are accepted:
+#   Within [dirs] and [skills], two line forms are accepted:
 #     <path>                   plain entry; symlink name = basename(path)
 #     <prefix> = <path>        prefixed entry; symlink name = "<prefix>:<basename>"
 #
 #   If the file does not exist, an error is raised.
-#
-#   The Claude config directory defaults to ~/.claude but can be overridden
-#   via the CLAUDE_CONFIG_DIR environment variable (matching Claude Code).
 
 set -euo pipefail
 
 VERSION="1.2.1"
 
-CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-SKILLS_DIR="$CLAUDE_DIR/skills"
-CONF_FILE="$CLAUDE_DIR/skill-link.conf"
-LEGACY_CONF_FILE="$CLAUDE_DIR/skill-dirs.conf"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/skill-link"
+CONF_FILE="$CONF_DIR/skill-link.conf"
+
+# Populated by load_conf. Entries keep conf order so that the first entry
+# wins on a name collision.
+TARGETS=()
+ENTRY_TYPES=()      # conf section: `dirs` or `skills`
+ENTRY_PATHS=()      # expanded path without trailing slash
+ENTRY_PREFIXES=()   # empty for plain entries
+
+# Populated by _resolve_skills: every skill dir the entries expand to, in
+# conf order, with the symlink name it gets in each target.
+SKILL_PATHS=()      # without trailing slash
+SKILL_NAMES=()      # basename, or "<prefix>:<basename>"
 
 usage() {
   cat <<EOF
@@ -52,36 +62,23 @@ Options:
 
 Configuration:
   $CONF_FILE — INI-style sections (# = comment). Required.
+    [targets]             skills dirs to link into (at least one required),
+                          e.g. ~/.claude/skills or ~/.agents/skills
     [dirs]                parent dirs; every subdirectory is linked
-    <prefix> = <path>     prefix the resulting symlink as "<prefix>:<name>"
     [skills]              single-skill dirs (must contain SKILL.md)
+    <prefix> = <path>     in [dirs]/[skills], name the symlink "<prefix>:<name>"
 EOF
 }
 
-check_conf() {
+# Parse $CONF_FILE into TARGETS and ENTRY_* arrays. Exits on any error, so
+# callers can rely on a valid conf with at least one target afterwards.
+load_conf() {
   if [[ ! -f "$CONF_FILE" ]]; then
-    if [[ -f "$LEGACY_CONF_FILE" ]]; then
-      echo "Error: $CONF_FILE not found." >&2
-      echo "A legacy $LEGACY_CONF_FILE was detected. The format has changed:" >&2
-      echo "run 'skill-link init' to create a fresh skill-link.conf and" >&2
-      echo "migrate your entries by hand into [dirs] / [skills] sections." >&2
-      exit 1
-    fi
     echo "Error: $CONF_FILE not found." >&2
     echo "Run 'skill-link init' to create it from a template." >&2
     exit 1
   fi
-  # Run the parser once up-front so syntax errors surface before any side
-  # effects. Subsequent callers use process substitution which would
-  # otherwise swallow the parser's non-zero exit.
-  get_entries >/dev/null
-}
 
-# Emit one record per entry as
-#   <type>\t<expanded-path>\t<prefix>
-# where <type> is `parent` (from [dirs]) or `skill` (from [skills]), and
-# <prefix> is empty for plain entries.
-get_entries() {
   local lineno=0 section="" line stripped key value path prefix
   while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
@@ -93,7 +90,7 @@ get_entries() {
     if [[ "$stripped" =~ ^\[(.*)\]$ ]]; then
       local name="${BASH_REMATCH[1]}"
       case "$name" in
-        dirs|skills) section="$name" ;;
+        targets|dirs|skills) section="$name" ;;
         *)
           echo "Error: $CONF_FILE: unknown section [$name] (line $lineno)" >&2
           exit 1
@@ -103,7 +100,7 @@ get_entries() {
     fi
 
     if [[ -z "$section" ]]; then
-      echo "Error: $CONF_FILE: entry before any [dirs]/[skills] section (line $lineno)" >&2
+      echo "Error: $CONF_FILE: entry before any [targets]/[dirs]/[skills] section (line $lineno)" >&2
       exit 1
     fi
 
@@ -133,13 +130,29 @@ get_entries() {
       path="$stripped"
     fi
 
-    local type
-    case "$section" in
-      dirs) type="parent" ;;
-      skills) type="skill" ;;
-    esac
-    printf '%s\t%s\t%s\n' "$type" "$(eval echo "$path")" "$prefix"
+    path="$(eval echo "$path")"
+    path="${path%/}"
+    if [[ "$section" == targets ]]; then
+      if [[ -n "$prefix" ]]; then
+        echo "Error: $CONF_FILE: prefix is not allowed in [targets] (line $lineno)" >&2
+        exit 1
+      fi
+      TARGETS+=("$path")
+    else
+      ENTRY_TYPES+=("$section")
+      ENTRY_PATHS+=("$path")
+      ENTRY_PREFIXES+=("$prefix")
+    fi
   done < "$CONF_FILE"
+
+  if (( ${#TARGETS[@]} == 0 )); then
+    cat >&2 <<EOF
+Error: $CONF_FILE: no [targets] entries.
+List at least one skills directory to link into, e.g. ~/.claude/skills
+(Claude Code) or ~/.agents/skills (Codex).
+EOF
+    exit 1
+  fi
 }
 
 cmd_init() {
@@ -147,21 +160,31 @@ cmd_init() {
     echo "$CONF_FILE already exists. Leaving it untouched."
     return
   fi
-  mkdir -p "$CLAUDE_DIR"
+  mkdir -p "$CONF_DIR"
   cat > "$CONF_FILE" <<'EOF'
 # skill-link configuration (https://github.com/Mizumaki/homebrew-skill-link)
 #
+# [targets] — each line points to a skills directory an agent reads.
+# Every skill below is linked into every target. At least one target is
+# required; uncomment the agents you use.
+#
 # [dirs] — each line points to a parent directory; every direct
-# subdirectory is linked as a skill under ~/.claude/skills/.
+# subdirectory is linked as a skill into each target.
 #
 # [skills] — each line points to a single skill directory containing
 # SKILL.md. The directory itself is linked.
 #
-# Within either section, write a plain path for an unprefixed entry,
+# Within [dirs] and [skills], write a plain path for an unprefixed entry,
 # or "<prefix> = <path>" to namespace the resulting symlink as
 # "<prefix>:<name>" — e.g. matt = ~/dev/personal-skills/skills produces
-# ~/.claude/skills/matt:<subdir> entries.
+# <target>/matt:<subdir> entries.
 #
+[targets]
+# Claude Code
+# ~/.claude/skills
+# Codex
+# ~/.agents/skills
+
 [dirs]
 # ~/Documents/dev/personal-skills/skills
 # work = ~/Documents/dev/work-skills/skills
@@ -171,28 +194,49 @@ cmd_init() {
 # matt = ~/Documents/dev/personal/tdd-skill
 EOF
   echo "Created $CONF_FILE"
-  echo "Edit it to list your skill directories, then run 'skill-link sync'."
+  echo "Edit it to list your targets and skill directories, then run 'skill-link sync'."
 }
 
-# Compose the symlink name for a skill path and optional prefix.
-_link_name() {
+# Expand the conf entries into SKILL_PATHS / SKILL_NAMES, warning once about
+# entries that do not resolve to any skill.
+_resolve_skills() {
+  local i path prefix skill_path
+  for i in "${!ENTRY_TYPES[@]}"; do
+    path="${ENTRY_PATHS[$i]}"
+    prefix="${ENTRY_PREFIXES[$i]}"
+    case "${ENTRY_TYPES[$i]}" in
+      dirs)
+        if [[ ! -d "$path" ]]; then
+          echo "  [warn] $path not found, skipping."
+          continue
+        fi
+        for skill_path in "$path"/*/; do
+          [[ -d "$skill_path" ]] || continue
+          _add_skill "${skill_path%/}" "$prefix"
+        done
+        ;;
+      skills)
+        if [[ ! -d "$path" || ! -f "$path/SKILL.md" ]]; then
+          echo "  [warn] $path is not a skill (missing dir or no SKILL.md), skipping."
+          continue
+        fi
+        _add_skill "$path" "$prefix"
+        ;;
+    esac
+  done
+}
+
+_add_skill() {
   local skill_path="$1" prefix="$2"
-  local base
-  base="$(basename "$skill_path")"
-  if [[ -n "$prefix" ]]; then
-    printf '%s:%s' "$prefix" "$base"
-  else
-    printf '%s' "$base"
-  fi
+  SKILL_PATHS+=("$skill_path")
+  SKILL_NAMES+=("${prefix:+$prefix:}${skill_path##*/}")
 }
 
-# Link a single skill dir. Relies on dynamic scope for the caller's
-# linked/kept/skipped counters.
+# Link a single skill dir into a target dir. Relies on dynamic scope for the
+# caller's linked/kept/skipped counters.
 _link_one() {
-  local skill_path="$1" prefix="${2:-}"
-  local link_name target
-  link_name="$(_link_name "$skill_path" "$prefix")"
-  target="$SKILLS_DIR/$link_name"
+  local skill_path="$1" link_name="$2" target_dir="$3"
+  local target="$target_dir/$link_name"
   if [[ -L "$target" && -e "$target" ]]; then
     echo "  [keep] $link_name (already linked -> $(readlink "$target"))"
     ((kept++)) || true
@@ -212,80 +256,70 @@ _link_one() {
 }
 
 cmd_install() {
-  check_conf
-  mkdir -p "$SKILLS_DIR"
-  local linked=0 kept=0 skipped=0
-  while IFS=$'\t' read -r type path prefix; do
-    case "$type" in
-      parent)
-        if [[ ! -d "$path" ]]; then
-          echo "  [warn] $path not found, skipping."
-          continue
-        fi
-        for skill_path in "$path"/*/; do
-          [[ -d "$skill_path" ]] || continue
-          _link_one "$skill_path" "$prefix"
-        done
-        ;;
-      skill)
-        if [[ ! -d "$path" || ! -f "$path/SKILL.md" ]]; then
-          echo "  [warn] $path is not a skill (missing dir or no SKILL.md), skipping."
-          continue
-        fi
-        _link_one "${path%/}/" "$prefix"
-        ;;
-    esac
-  done < <(get_entries)
+  _resolve_skills
+  local linked=0 kept=0 skipped=0 target_dir i
+  for target_dir in "${TARGETS[@]}"; do
+    mkdir -p "$target_dir"
+    echo "==> $target_dir"
+    for i in "${!SKILL_PATHS[@]}"; do
+      _link_one "${SKILL_PATHS[$i]}/" "${SKILL_NAMES[$i]}" "$target_dir"
+    done
+  done
   echo ""
   echo "Done: $linked linked, $kept kept, $skipped skipped."
 }
 
 cmd_list() {
-  check_conf
+  load_conf
 
-  local -a parent_dirs=() parent_prefixes=() skill_paths=() skill_prefixes=()
-  while IFS=$'\t' read -r type path prefix; do
-    case "$type" in
-      parent)
-        parent_dirs+=("${path%/}")
-        parent_prefixes+=("$prefix")
-        ;;
-      skill)
-        skill_paths+=("${path%/}")
-        skill_prefixes+=("$prefix")
-        ;;
-    esac
-  done < <(get_entries)
-
-  echo "Configured directories:"
-  local i
-  for i in "${!parent_dirs[@]}"; do
-    if [[ -n "${parent_prefixes[$i]}" ]]; then
-      echo "  ${parent_prefixes[$i]}: ${parent_dirs[$i]}"
-    else
-      echo "  ${parent_dirs[$i]}"
-    fi
+  local target_dir
+  echo "Configured targets:"
+  for target_dir in "${TARGETS[@]}"; do
+    echo "  $target_dir"
   done
-  if (( ${#skill_paths[@]} > 0 )); then
+
+  echo ""
+  echo "Configured directories:"
+  _print_entries dirs
+  local skills
+  skills="$(_print_entries skills)"
+  if [[ -n "$skills" ]]; then
     echo ""
     echo "Configured skills:"
-    for i in "${!skill_paths[@]}"; do
-      if [[ -n "${skill_prefixes[$i]}" ]]; then
-        echo "  ${skill_prefixes[$i]}: ${skill_paths[$i]}"
-      else
-        echo "  ${skill_paths[$i]}"
-      fi
-    done
+    echo "$skills"
   fi
-  echo ""
-  echo "Skills in $SKILLS_DIR:"
 
-  local found=0
-  if [[ -d "$SKILLS_DIR" ]]; then
-    for entry in "$SKILLS_DIR"/*; do
+  _resolve_skills >/dev/null
+  for target_dir in "${TARGETS[@]}"; do
+    echo ""
+    _list_target "$target_dir"
+  done
+}
+
+# Print the conf entries of one section, annotated with their prefix.
+_print_entries() {
+  local section="$1" i
+  for i in "${!ENTRY_TYPES[@]}"; do
+    [[ "${ENTRY_TYPES[$i]}" == "$section" ]] || continue
+    if [[ -n "${ENTRY_PREFIXES[$i]}" ]]; then
+      echo "  ${ENTRY_PREFIXES[$i]}: ${ENTRY_PATHS[$i]}"
+    else
+      echo "  ${ENTRY_PATHS[$i]}"
+    fi
+  done
+}
+
+# Print the link status of every entry in one target dir, followed by
+# resolved skills that are not linked there yet.
+_list_target() {
+  local target_dir="$1"
+  echo "Skills in $target_dir:"
+
+  local found=0 entry name
+  if [[ -d "$target_dir" ]]; then
+    for entry in "$target_dir"/*; do
       [[ -e "$entry" || -L "$entry" ]] || continue
-      local name
-      name="$(basename "$entry")"
+      name="${entry##*/}"
       if [[ -L "$entry" ]]; then
         local dest
         dest="$(readlink "$entry")"
@@ -301,31 +335,11 @@ cmd_list() {
     done
   fi
 
-  # Parent-entry skills present on disk but not yet linked.
-  for i in "${!parent_dirs[@]}"; do
-    local conf_dir="${parent_dirs[$i]}" pfx="${parent_prefixes[$i]}"
-    [[ -d "$conf_dir" ]] || continue
-    for skill_path in "$conf_dir"/*/; do
-      [[ -d "$skill_path" ]] || continue
-      local link_name target
-      link_name="$(_link_name "$skill_path" "$pfx")"
-      target="$SKILLS_DIR/$link_name"
-      if [[ ! -e "$target" && ! -L "$target" ]]; then
-        echo "  [unlinked] $link_name -> ${skill_path%/} (run 'skill-link sync')"
-        ((found++)) || true
-      fi
-    done
-  done
-
-  # Single-skill entries that are valid but not yet linked.
-  for i in "${!skill_paths[@]}"; do
-    local skill_p="${skill_paths[$i]}" pfx="${skill_prefixes[$i]}"
-    [[ -d "$skill_p" && -f "$skill_p/SKILL.md" ]] || continue
-    local link_name target
-    link_name="$(_link_name "$skill_p" "$pfx")"
-    target="$SKILLS_DIR/$link_name"
-    if [[ ! -e "$target" && ! -L "$target" ]]; then
-      echo "  [unlinked] $link_name -> $skill_p (run 'skill-link sync')"
+  local i
+  for i in "${!SKILL_PATHS[@]}"; do
+    entry="$target_dir/${SKILL_NAMES[$i]}"
+    if [[ ! -e "$entry" && ! -L "$entry" ]]; then
+      echo "  [unlinked] ${SKILL_NAMES[$i]} -> ${SKILL_PATHS[$i]} (run 'skill-link sync')"
       ((found++)) || true
     fi
   done
@@ -333,38 +347,33 @@ cmd_list() {
   [[ $found -gt 0 ]] || echo "  (none)"
 }
 
-cmd_sync() {
-  check_conf
-
-  local -a parent_dirs=() skill_paths=()
-  while IFS=$'\t' read -r type path _prefix; do
-    case "$type" in
-      parent) parent_dirs+=("${path%/}") ;;
-      skill)  skill_paths+=("${path%/}") ;;
+# True when the symlink destination comes from a conf entry: its parent is a
+# [dirs] entry, or it is itself a [skills] entry.
+_in_conf() {
+  local dest_clean="${1%/}" i
+  local parent="${dest_clean%/*}"
+  for i in "${!ENTRY_TYPES[@]}"; do
+    case "${ENTRY_TYPES[$i]}" in
+      dirs)   [[ "$parent" == "${ENTRY_PATHS[$i]}" ]] && return 0 ;;
+      skills) [[ "$dest_clean" == "${ENTRY_PATHS[$i]}" ]] && return 0 ;;
     esac
-  done < <(get_entries)
+  done
+  return 1
+}
 
-  # Collect symlinks whose source dir is no longer in conf.
+cmd_sync() {
+  load_conf
+
+  # Collect symlinks, across all targets, whose source is no longer in conf.
   local -a stale=()
-  if [[ -d "$SKILLS_DIR" ]]; then
-    for entry in "$SKILLS_DIR"/*; do
+  local target_dir entry
+  for target_dir in "${TARGETS[@]}"; do
+    [[ -d "$target_dir" ]] || continue
+    for entry in "$target_dir"/*; do
       [[ -L "$entry" ]] || continue
-      local dest dest_clean parent in_conf
-      dest="$(readlink "$entry")"
-      dest_clean="${dest%/}"
-      parent="$(dirname "$dest_clean")"
-      in_conf=false
-      for conf_dir in "${parent_dirs[@]+"${parent_dirs[@]}"}"; do
-        [[ "$parent" == "$conf_dir" ]] && in_conf=true && break
-      done
-      if [[ "$in_conf" == false ]]; then
-        for skill_p in "${skill_paths[@]+"${skill_paths[@]}"}"; do
-          [[ "$dest_clean" == "$skill_p" ]] && in_conf=true && break
-        done
-      fi
-      [[ "$in_conf" == false ]] && stale+=("$entry")
+      _in_conf "$(readlink "$entry")" || stale+=("$entry")
     done
-  fi
+  done
 
   if [[ ${#stale[@]} -eq 0 ]]; then
     echo "No stale symlinks found."
@@ -375,7 +384,7 @@ cmd_sync() {
 
   echo "The following symlinks will be removed:"
   for entry in "${stale[@]}"; do
-    echo "  $(basename "$entry") -> $(readlink "$entry")"
+    echo "  $entry -> $(readlink "$entry")"
   done
   echo ""
   if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
@@ -386,10 +395,8 @@ cmd_sync() {
 
   local removed=0
   for entry in "${stale[@]}"; do
-    local name
-    name="$(basename "$entry")"
     rm "$entry"
-    echo "  [removed] $name"
+    echo "  [removed] ${entry##*/} (from ${entry%/*})"
     ((removed++)) || true
   done
   echo "$removed symlink(s) removed."
@@ -399,20 +406,22 @@ cmd_sync() {
 }
 
 cmd_clean() {
-  if [[ ! -d "$SKILLS_DIR" ]]; then
-    echo "No $SKILLS_DIR directory found."
-    return
-  fi
-  local removed=0
-  for entry in "$SKILLS_DIR"/*; do
-    [[ -L "$entry" ]] || continue
-    if [[ ! -e "$entry" ]]; then
-      local name
-      name="$(basename "$entry")"
-      rm "$entry"
-      echo "  [removed] $name (broken symlink)"
-      ((removed++)) || true
+  load_conf
+
+  local removed=0 target_dir entry
+  for target_dir in "${TARGETS[@]}"; do
+    if [[ ! -d "$target_dir" ]]; then
+      echo "No $target_dir directory found."
+      continue
     fi
+    for entry in "$target_dir"/*; do
+      [[ -L "$entry" ]] || continue
+      if [[ ! -e "$entry" ]]; then
+        rm "$entry"
+        echo "  [removed] ${entry##*/} (broken symlink in $target_dir)"
+        ((removed++)) || true
+      fi
+    done
   done
   echo "Done: $removed broken symlinks removed."
 }
