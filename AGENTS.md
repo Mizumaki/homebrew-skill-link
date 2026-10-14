@@ -20,7 +20,14 @@
 
 ## バージョン bump はしない
 
-`bin/skill-link` の `VERSION`、`Formula/skill-link.rb` の `url` / `sha256` / `test` 内バージョン文字列、`tests/basic.bats` の version 期待値は **手動で変更しないこと**。リリースは `.github/workflows/` のリリースワークフロー側で一括して bump するため、機能変更の PR では現行バージョンのままにしておく。
+以下のバージョン関連の値は **手動で変更しないこと**。リリースは `.github/workflows/bump-release.yml` が一括して bump するため、機能変更の PR では現行バージョンのままにしておく。
+
+- `bin/skill-link` の `VERSION` と `tests/basic.bats` の version 期待値: ワークフローが bump し、`main` に直接 push する。
+- `Formula/skill-link.rb` の `url` / `sha256`: ワークフローがタグの tarball から計算し、`Update Formula to vX.Y.Z` PR として出す。
+
+`Formula/skill-link.rb` の `test` ブロックは `#{version}` (`url` のタグから Homebrew が導出する) で期待値を組み立てるため、bump は不要。ここにバージョン文字列を直書きしないこと。
+
+リリース手順の詳細は `docs/release.md` を参照。
 
 ## よく使うコマンド
 

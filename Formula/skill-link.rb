@@ -10,7 +10,7 @@ class SkillLink < Formula
   end
 
   test do
-    assert_match "skill-link 1.0.0", shell_output("#{bin}/skill-link --version")
+    assert_match "skill-link #{version}", shell_output("#{bin}/skill-link --version")
     assert_match "Usage", shell_output("#{bin}/skill-link 2>&1", 1)
   end
 end
