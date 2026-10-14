@@ -22,12 +22,13 @@ teardown() {
   [ -f "$CONF" ]
   [[ "$output" == *"Created"* ]]
   [[ "$output" == *"$CONF"* ]]
-  # Freshly init'ed template must be a no-op when synced: empty [dirs]/[skills]
-  # sections, all example entries commented out.
+  # Every example entry is commented out, including targets, so a freshly
+  # init'ed conf has no target and sync refuses to guess one.
   run "$SCRIPT" sync
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Done: 0 linked, 0 kept, 0 skipped."* ]]
-  [[ "$output" != *"[warn]"* ]]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"[targets]"* ]]
+  [ ! -e "$HOME/.claude/skills" ]
+  [ ! -e "$HOME/.agents/skills" ]
 }
 
 @test "init leaves an existing skill-link.conf untouched" {
@@ -41,19 +42,21 @@ teardown() {
   [ "$(cat "$CONF")" = "$before" ]
 }
 
-@test "init creates the Claude config dir if missing" {
-  rm -rf "$HOME/.claude"
-  [ ! -d "$HOME/.claude" ]
+@test "init creates the config dir if missing" {
+  rm -rf "$XDG_CONFIG_HOME"
+  [ ! -d "$XDG_CONFIG_HOME" ]
 
   run "$SCRIPT" init
   [ "$status" -eq 0 ]
-  [ -d "$HOME/.claude" ]
+  [ -d "$XDG_CONFIG_HOME/skill-link" ]
   [ -f "$CONF" ]
 }
 
-@test "init template mentions [dirs] and [skills] sections" {
+@test "init template mentions [targets], [dirs] and [skills] sections" {
   rm -f "$CONF"
   run "$SCRIPT" init
+  [ "$status" -eq 0 ]
+  run grep -E '^\s*#.*\[targets\]' "$CONF"
   [ "$status" -eq 0 ]
   run grep -E '^\s*#.*\[dirs\]' "$CONF"
   [ "$status" -eq 0 ]
@@ -61,12 +64,37 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "init honors CLAUDE_CONFIG_DIR" {
-  local custom="$HOME/custom-claude"
-  CLAUDE_CONFIG_DIR="$custom" run "$SCRIPT" init
+@test "init template suggests Claude Code and Codex targets, both commented out" {
+  rm -f "$CONF"
+  run "$SCRIPT" init
   [ "$status" -eq 0 ]
-  [ -f "$custom/skill-link.conf" ]
-  [ ! -f "$HOME/.claude/skill-link.conf" ]
+  run grep -E '^\s*#\s*~/\.claude/skills\s*$' "$CONF"
+  [ "$status" -eq 0 ]
+  run grep -E '^\s*#\s*~/\.agents/skills\s*$' "$CONF"
+  [ "$status" -eq 0 ]
+}
+
+@test "init honors XDG_CONFIG_HOME" {
+  local custom="$HOME/custom-xdg"
+  XDG_CONFIG_HOME="$custom" run "$SCRIPT" init
+  [ "$status" -eq 0 ]
+  [ -f "$custom/skill-link/skill-link.conf" ]
+  [ ! -f "$CONF" ]
+}
+
+@test "init falls back to ~/.config when XDG_CONFIG_HOME is unset" {
+  unset XDG_CONFIG_HOME
+  run "$SCRIPT" init
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/.config/skill-link/skill-link.conf" ]
+}
+
+@test "init no longer writes into the Claude config dir" {
+  CLAUDE_CONFIG_DIR="$HOME/custom-claude" run "$SCRIPT" init
+  [ "$status" -eq 0 ]
+  [ ! -e "$HOME/custom-claude/skill-link.conf" ]
+  [ ! -e "$HOME/.claude/skill-link.conf" ]
+  [ -f "$CONF" ]
 }
 
 @test "init followed by sync works end-to-end" {
@@ -77,7 +105,7 @@ teardown() {
   # Append a real conf line on top of the template.
   mkdir -p "$HOME/src"
   make_skill "$HOME/src" alpha
-  printf '[dirs]\n%s\n' "$HOME/src" >> "$CONF"
+  printf '[targets]\n%s\n[dirs]\n%s\n' "$SKILLS" "$HOME/src" >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]

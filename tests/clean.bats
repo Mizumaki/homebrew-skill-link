@@ -4,6 +4,7 @@ load test_helper
 
 setup() {
   _skill_link_common_setup
+  write_conf
 }
 
 teardown() {
@@ -49,12 +50,13 @@ teardown() {
   [[ "$output" == *"Done: 0 broken symlinks removed."* ]]
 }
 
-@test "clean does not require skill-link.conf" {
+@test "clean errors when skill-link.conf is missing" {
   mkdir -p "$SKILLS"
   ln -s "$HOME/missing" "$SKILLS/bad"
-  [ ! -f "$CONF" ]
+  rm -f "$CONF"
 
   run "$SCRIPT" clean
-  [ "$status" -eq 0 ]
-  [ ! -e "$SKILLS/bad" ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+  [ -L "$SKILLS/bad" ]
 }

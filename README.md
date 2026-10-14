@@ -1,8 +1,8 @@
 # Skill Link
 
-A small CLI that exposes Claude Code skills kept across multiple source directories under a single `~/.claude/skills/` tree via symlinks.
+A small CLI that exposes agent skills kept across multiple source directories under one or more agent skill directories — e.g. Claude Code's `~/.claude/skills/` and Codex's `~/.agents/skills/` — via symlinks.
 
-Useful when you maintain skills in several repos (personal, work, experimental) and want Claude Code to discover all of them from one place without copying.
+Useful when you maintain skills in several repos (personal, work, experimental) and want every agent you use to discover all of them without copying.
 
 ## Install
 
@@ -17,9 +17,19 @@ brew install skill-link
 
 ## Configuration
 
-Create `skill-link.conf` inside your Claude config directory (defaults to `~/.claude`, override with `CLAUDE_CONFIG_DIR`). It uses two INI-style sections — `[dirs]` for parent directories whose subdirectories are each a skill, and `[skills]` for single skill directories. Lines starting with `#` are comments.
+Create `skill-link.conf` at `${XDG_CONFIG_HOME:-~/.config}/skill-link/skill-link.conf` (`skill-link init` writes a template there). It uses three INI-style sections. Lines starting with `#` are comments.
+
+- `[targets]` — skills directories that agents read. Every skill is linked into every target. At least one target is required; there is no default.
+- `[dirs]` — parent directories whose subdirectories are each a skill.
+- `[skills]` — single skill directories.
 
 ```
+[targets]
+# Claude Code
+~/.claude/skills
+# Codex
+~/.agents/skills
+
 [dirs]
 ~/Documents/dev/personal-skills/skills
 ~/Documents/dev/work-skills/skills
@@ -28,19 +38,18 @@ Create `skill-link.conf` inside your Claude config directory (defaults to `~/.cl
 ~/Documents/dev/work/special-skill
 ```
 
-Each direct subdirectory of a `[dirs]` path is linked as `~/.claude/skills/<subdir>`. Each `[skills]` path must itself contain `SKILL.md` and is linked as `~/.claude/skills/<basename>`; otherwise `skill-link` prints a `[warn]` and skips it. Removing an entry from `skill-link.conf` makes the corresponding link a stale-removal candidate on the next `sync`.
+Each direct subdirectory of a `[dirs]` path is linked as `<target>/<subdir>` in every target. Each `[skills]` path must itself contain `SKILL.md` and is linked as `<target>/<basename>`; otherwise `skill-link` prints a `[warn]` and skips it. Removing an entry from `skill-link.conf` makes the corresponding links stale-removal candidates on the next `sync`. Removing a target stops `skill-link` from managing that directory at all; links already there are left as they are.
 
-If you use a non-default Claude config directory, set `CLAUDE_CONFIG_DIR` (the same variable Claude Code itself honors), e.g.
+Common targets:
 
-```bash
-export CLAUDE_CONFIG_DIR="$HOME/.config/claude"
-```
-
-`skill-link` will then read `$CLAUDE_CONFIG_DIR/skill-link.conf` and write symlinks under `$CLAUDE_CONFIG_DIR/skills/`.
+| Agent | Target |
+|---|---|
+| Claude Code | `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`) |
+| Codex | `~/.agents/skills` |
 
 ### Namespacing skills with a prefix
 
-Any entry in either section may be written as `<prefix> = <path>`. The resulting symlink is named `<prefix>:<basename>`, matching the way plugin-namespaced skills already appear to Claude Code.
+Any entry in `[dirs]` or `[skills]` may be written as `<prefix> = <path>`. The resulting symlink is named `<prefix>:<basename>`, matching the way plugin-namespaced skills already appear to Claude Code. Prefixes are not allowed in `[targets]`.
 
 ```
 [dirs]
@@ -51,20 +60,23 @@ work = ~/Documents/dev/work-skills/skills
 work = ~/Documents/dev/work/slack-helper
 ```
 
-A `personal`-prefixed `[dirs]` entry whose path contains `tdd/` produces `~/.claude/skills/personal:tdd`. Prefixes must match `[A-Za-z0-9_-]+`; `:` and whitespace are not allowed in a prefix. Unprefixed and prefixed entries with the same basename can coexist.
+A `personal`-prefixed `[dirs]` entry whose path contains `tdd/` produces `<target>/personal:tdd`. Prefixes must match `[A-Za-z0-9_-]+`; `:` and whitespace are not allowed in a prefix. Unprefixed and prefixed entries with the same basename can coexist.
 
 > [!NOTE]
-> The prefix changes the **invocation name** (the directory name under `~/.claude/skills/`, e.g. `personal:tdd`), but Claude Code's **skill recommender** surfaces skills by the `name:` field inside each `SKILL.md` frontmatter. Two skills whose `SKILL.md` both declare `name: tdd` will compete for the same recommendation slot even when their directories are `personal:tdd` and `work:tdd`. If you want a prefixed skill to also be recommended under its prefixed identity, edit `SKILL.md`'s `name:` to match (e.g. `name: personal:tdd`).
+> The prefix changes the **invocation name** (the directory name under the target, e.g. `personal:tdd`), but Claude Code's **skill recommender** surfaces skills by the `name:` field inside each `SKILL.md` frontmatter. Two skills whose `SKILL.md` both declare `name: tdd` will compete for the same recommendation slot even when their directories are `personal:tdd` and `work:tdd`. If you want a prefixed skill to also be recommended under its prefixed identity, edit `SKILL.md`'s `name:` to match (e.g. `name: personal:tdd`).
+
+> [!NOTE]
+> Whether Codex accepts `:` in skill directory names has not been verified.
 
 ## Usage
 
 ```bash
 skill-link init      # create skill-link.conf from a template if it does not
                      # already exist
-skill-link sync      # create symlinks under $CLAUDE_CONFIG_DIR/skills/ and
-                     # remove stale symlinks whose source dir is no longer in conf
-skill-link list      # show configured dirs and current link status
-skill-link clean     # remove only broken symlinks
+skill-link sync      # create symlinks in every target and remove stale
+                     # symlinks whose source dir is no longer in conf
+skill-link list      # show configured targets/dirs and per-target link status
+skill-link clean     # remove only broken symlinks in every target
 skill-link --version
 skill-link --help
 ```
@@ -75,8 +87,8 @@ Editing files inside a linked skill takes effect immediately — no re-sync need
 
 `sync` and `clean` both delete symlinks, but they use different criteria and cover different failure modes.
 
-- `sync` removes **stale** links — those whose parent directory is no longer listed in `skill-link.conf`. It does not check whether the link target still exists on disk.
-- `clean` removes **broken** links — those whose target no longer exists, regardless of what `skill-link.conf` says. It does not read the conf at all and does not prompt for confirmation.
+- `sync` removes **stale** links — those whose parent directory is no longer listed in `skill-link.conf`. It does not check whether the link target still exists on disk. Note that every symlink in a target counts, including ones placed by other tools in a shared directory such as `~/.agents/skills`; the confirmation prompt lets you abort.
+- `clean` removes **broken** links — those whose target no longer exists, regardless of which `[dirs]` / `[skills]` entries `skill-link.conf` lists. It reads the conf only to find the targets, and does not prompt for confirmation.
 
 This means there are cases `sync` cannot clean up by itself, and you need `clean` to finish the job:
 

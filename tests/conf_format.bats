@@ -1,7 +1,6 @@
 #!/usr/bin/env bats
 #
-# Edge cases of the INI-style skill-link.conf parser, plus the legacy
-# skill-dirs.conf detection that hard-breaks the old format.
+# Edge cases of the INI-style skill-link.conf parser.
 
 load test_helper
 
@@ -43,26 +42,19 @@ teardown() {
 }
 
 @test "empty [dirs] and [skills] sections sync as 0 entries" {
-  printf '[dirs]\n[skills]\n' > "$CONF"
+  write_targets
+  printf '[dirs]\n[skills]\n' >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
   [[ "$output" == *"Done: 0 linked, 0 kept, 0 skipped."* ]]
 }
 
-@test "legacy skill-dirs.conf is detected and rejected with migration hint" {
-  rm -f "$CONF"
-  printf '%s\n' "$SRC" > "$HOME/.claude/skill-dirs.conf"
-
-  run "$SCRIPT" sync
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"legacy"* ]] || [[ "$output" == *"skill-dirs.conf"* ]]
-  [[ "$output" == *"skill-link init"* ]]
-}
-
 @test "tabs and spaces around section headers and entries are tolerated" {
   make_skill "$SRC" alpha
   {
+    printf '\t[targets]  \n'
+    printf '  %s\t\n' "$SKILLS"
     printf '\t[dirs]   \n'
     printf '   %s\t\n' "$SRC"
   } > "$CONF"
@@ -74,7 +66,8 @@ teardown() {
 
 @test "whitespace around '=' in prefixed entries is tolerated" {
   make_skill "$HOME/matt-skills" tdd
-  printf '[dirs]\nmatt   =   %s\n' "$HOME/matt-skills" > "$CONF"
+  write_targets
+  printf '[dirs]\nmatt   =   %s\n' "$HOME/matt-skills" >> "$CONF"
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]

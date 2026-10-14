@@ -1,6 +1,6 @@
 # skill-link
 
-`skill-link` は、複数のディレクトリに散在する Claude Code skill を `~/.claude/skills/` 配下にシンボリックリンクで集約する Bash 製の CLI です。
+`skill-link` は、複数のディレクトリに散在する agent skill を、conf の `[targets]` に列挙した skill ディレクトリ (Claude Code の `~/.claude/skills/`、Codex の `~/.agents/skills/` など) 配下にシンボリックリンクで集約する Bash 製の CLI です。conf は `${XDG_CONFIG_HOME:-~/.config}/skill-link/skill-link.conf` に置きます。
 
 - 実装本体: `bin/skill-link`
 - テスト: `tests/*.bats` (bats-core)
@@ -32,6 +32,6 @@ make check   # lint → test
 
 ## テストの書き方
 
-- 各テストファイルはコマンド/機能単位 (`sync.bats`, `clean.bats`, `init.bats`, `single_skill.bats` など) に分割する。
+- 各テストファイルはコマンド/機能単位 (`sync.bats`, `clean.bats`, `init.bats`, `single_skill.bats`, `targets.bats` など) に分割する。
 - 共通のセットアップは `tests/test_helper.bash` に置く。
 - 新しいサブコマンドや挙動の分岐を追加するときは、対応する `*.bats` を新規作成するか既存ファイルに `@test` を足す。

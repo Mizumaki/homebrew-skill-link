@@ -35,7 +35,7 @@ setup() {
 
 @test "list without conf errors with setup hint" {
   tmp="$(mktemp -d)"
-  HOME="$tmp" run "$SCRIPT" list
+  HOME="$tmp" XDG_CONFIG_HOME="$tmp/.config" run "$SCRIPT" list
   rm -rf "$tmp"
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
