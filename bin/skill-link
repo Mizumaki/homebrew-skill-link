@@ -245,10 +245,7 @@ _link_one() {
   if [[ -L "$target" && -e "$target" ]]; then
     ((kept++)) || true
   elif [[ -L "$target" && ! -e "$target" ]]; then
-    if (( ! DRY_RUN )); then
-      rm "$target"
-      ln -s "$skill_path" "$target"
-    fi
+    (( DRY_RUN )) || { rm "$target"; ln -s "$skill_path" "$target"; }
     echo "  [relink] $link_name -> $skill_path (was broken)"
     ((linked++)) || true
   elif [[ -e "$target" ]]; then
@@ -264,7 +261,7 @@ _link_one() {
 # Link every resolved skill into every target. $1 is the number of stale
 # links sync removed (or would remove), reported in the dry-run summary.
 cmd_install() {
-  local removed="${1:-0}"
+  local removed="$1"
   _resolve_skills
   local linked=0 kept=0 skipped=0 target_dir i before
   for target_dir in "${TARGETS[@]}"; do
@@ -404,41 +401,33 @@ cmd_sync() {
 
   if [[ ${#stale[@]} -eq 0 ]]; then
     echo "No stale symlinks found."
-    echo ""
-    cmd_install
-    return
-  fi
-
-  if (( DRY_RUN )); then
+  elif (( DRY_RUN )); then
     for entry in "${stale[@]}"; do
       echo "  [remove] ${entry##*/} (from ${entry%/*})"
     done
+  else
+    echo "The following symlinks will be removed:"
+    for entry in "${stale[@]}"; do
+      echo "  $entry -> $(readlink "$entry")"
+    done
     echo ""
-    cmd_install "${#stale[@]}"
-    return
+    if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+    echo ""
+
+    local removed=0
+    for entry in "${stale[@]}"; do
+      rm "$entry"
+      echo "  [removed] ${entry##*/} (from ${entry%/*})"
+      ((removed++)) || true
+    done
+    echo "$removed symlink(s) removed."
   fi
-
-  echo "The following symlinks will be removed:"
-  for entry in "${stale[@]}"; do
-    echo "  $entry -> $(readlink "$entry")"
-  done
-  echo ""
-  if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 0
-  fi
   echo ""
 
-  local removed=0
-  for entry in "${stale[@]}"; do
-    rm "$entry"
-    echo "  [removed] ${entry##*/} (from ${entry%/*})"
-    ((removed++)) || true
-  done
-  echo "$removed symlink(s) removed."
-  echo ""
-
-  cmd_install
+  cmd_install "${#stale[@]}"
 }
 
 cmd_clean() {

@@ -5,7 +5,8 @@ load test_helper
 setup() {
   _skill_link_common_setup
   SRC="$HOME/src"
-  mkdir -p "$SRC"
+  STALE_SRC="$HOME/stale-src"
+  mkdir -p "$SRC" "$STALE_SRC"
 }
 
 teardown() {
@@ -37,12 +38,8 @@ teardown() {
 }
 
 @test "sync --dry-run reports stale links without prompting or removing them" {
-  local stale_src="$HOME/stale-src"
-  make_skill "$SRC" alpha
-  make_skill "$stale_src" stale
-  mkdir -p "$SKILLS"
-  ln -s "$stale_src/stale/" "$SKILLS/stale"
-  write_conf "$SRC"
+  _seed_with_stale
+  make_skill "$SRC" beta
 
   # stdin closed: reaching the confirmation prompt would print "Aborted."
   run bash -c "'$SCRIPT' sync --dry-run </dev/null"
@@ -50,9 +47,9 @@ teardown() {
   [[ "$output" == *"[remove] stale (from $SKILLS)"* ]]
   [[ "$output" != *"Proceed?"* ]]
   [[ "$output" != *"Aborted."* ]]
-  [[ "$output" == *"[link] alpha"* ]]
+  [[ "$output" == *"[link] beta"* ]]
   [ -L "$SKILLS/stale" ]
-  [ ! -L "$SKILLS/alpha" ]
+  [ ! -L "$SKILLS/beta" ]
 }
 
 @test "sync --dry-run reports a broken link as relink without rewriting it" {
@@ -70,15 +67,10 @@ teardown() {
 }
 
 @test "sync --dry-run ends with a summary of what would change" {
-  local stale_src="$HOME/stale-src"
-  make_skill "$SRC" alpha   # already linked -> kept
+  _seed_with_stale          # alpha already linked -> kept; stale -> removed
   make_skill "$SRC" beta    # new -> would be linked
   make_skill "$SRC" gamma   # real dir in the way -> skipped
-  make_skill "$stale_src" stale
   mkdir -p "$SKILLS/gamma"
-  ln -s "$SRC/alpha/" "$SKILLS/alpha"
-  ln -s "$stale_src/stale/" "$SKILLS/stale"
-  write_conf "$SRC"
 
   run bash -c "'$SCRIPT' sync --dry-run </dev/null"
   [ "$status" -eq 0 ]

@@ -13,19 +13,6 @@ teardown() {
   _skill_link_common_teardown
 }
 
-# Set up a state where:
-#   - SRC is in conf and contains skill "alpha" (already linked)
-#   - STALE_SRC is NOT in conf but contains skill "stale" (still linked from a
-#     previous install)
-_seed_with_stale() {
-  make_skill "$SRC" alpha
-  make_skill "$STALE_SRC" stale
-  mkdir -p "$SKILLS"
-  ln -s "$SRC/alpha/" "$SKILLS/alpha"
-  ln -s "$STALE_SRC/stale/" "$SKILLS/stale"
-  write_conf "$SRC"
-}
-
 @test "sync errors when conf is missing" {
   run "$SCRIPT" sync
   [ "$status" -ne 0 ]
