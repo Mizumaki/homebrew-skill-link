@@ -1,8 +1,8 @@
 class SkillLink < Formula
   desc "Manage agent skill symlinks (Claude Code, Codex) across source directories"
   homepage "https://github.com/Mizumaki/homebrew-skill-link"
-  url "https://github.com/Mizumaki/homebrew-skill-link/archive/refs/tags/v1.3.0.tar.gz"
-  sha256 "1489b8c060e406b9de33d745a2aabedc03d6802fd83251284e28c8cf8493b9ed"
+  url "https://github.com/Mizumaki/homebrew-skill-link/archive/refs/tags/v1.3.1.tar.gz"
+  sha256 "324000461fb7786ab4bac775cdb55aa929d236e90871f7899a1180a0b82efc4f"
   license "MIT"
 
   def install
