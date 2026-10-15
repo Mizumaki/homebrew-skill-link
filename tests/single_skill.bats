@@ -96,7 +96,7 @@ teardown() {
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
   [[ "$output" != *"will be removed"* ]]
-  [[ "$output" == *"[keep] keepme"* ]]
+  [[ "$output" == *"Done: 0 linked, 1 kept, 0 skipped."* ]]
   [ -L "$SKILLS/keepme" ]
 }
 
@@ -114,7 +114,7 @@ teardown() {
   dest="$(readlink "$SKILLS/dupe")"
   [[ "$dest" == "$SRC/dupe/" ]]
   [[ "$output" == *"[link] dupe"* ]]
-  [[ "$output" == *"[keep] dupe"* ]]
+  [[ "$output" == *"Done: 1 linked, 1 kept, 0 skipped."* ]]
 }
 
 @test "name collision: first conf entry wins ([skills] first)" {
@@ -131,7 +131,7 @@ teardown() {
   dest="$(readlink "$SKILLS/dupe")"
   [[ "$dest" == "$HOME/standalone/dupe/" ]]
   [[ "$output" == *"[link] dupe"* ]]
-  [[ "$output" == *"[keep] dupe"* ]]
+  [[ "$output" == *"Done: 1 linked, 1 kept, 0 skipped."* ]]
 }
 
 @test "list shows 'Configured skills' only when at least one [skills] entry exists" {

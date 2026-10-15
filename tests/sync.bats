@@ -122,3 +122,14 @@ _seed_with_stale() {
   [[ "$output" == *"No stale symlinks found."* ]]
   [ -d "$SKILLS/manual-skill" ]
 }
+
+@test "sync rejects an unknown option without touching links" {
+  make_skill "$SRC" alpha
+  write_conf "$SRC"
+
+  run "$SCRIPT" sync --bogus
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--bogus"* ]]
+  [[ "$output" == *"Usage"* ]]
+  [ ! -L "$SKILLS/alpha" ]
+}

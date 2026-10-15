@@ -75,11 +75,16 @@ skill-link init      # create skill-link.conf from a template if it does not
                      # already exist
 skill-link sync      # create symlinks in every target and remove stale
                      # symlinks whose source dir is no longer in conf
+skill-link sync --dry-run
+                     # show what sync would link, relink, skip, or remove
+                     # without changing anything or prompting
 skill-link list      # show configured targets/dirs and per-target link status
 skill-link clean     # remove only broken symlinks in every target
 skill-link --version
 skill-link --help
 ```
+
+`sync` prints only the links it changes or cannot create (`[link]`, `[relink]`, `[skip]`). Skills that are already linked are counted in the final `Done:` line but not listed, and a target with nothing to do shows `(no changes)`.
 
 Editing files inside a linked skill takes effect immediately — no re-sync needed.
 
