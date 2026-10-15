@@ -13,19 +13,6 @@ teardown() {
   _skill_link_common_teardown
 }
 
-# Set up a state where:
-#   - SRC is in conf and contains skill "alpha" (already linked)
-#   - STALE_SRC is NOT in conf but contains skill "stale" (still linked from a
-#     previous install)
-_seed_with_stale() {
-  make_skill "$SRC" alpha
-  make_skill "$STALE_SRC" stale
-  mkdir -p "$SKILLS"
-  ln -s "$SRC/alpha/" "$SKILLS/alpha"
-  ln -s "$STALE_SRC/stale/" "$SKILLS/stale"
-  write_conf "$SRC"
-}
-
 @test "sync errors when conf is missing" {
   run "$SCRIPT" sync
   [ "$status" -ne 0 ]
@@ -121,4 +108,15 @@ _seed_with_stale() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"No stale symlinks found."* ]]
   [ -d "$SKILLS/manual-skill" ]
+}
+
+@test "sync rejects an unknown option without touching links" {
+  make_skill "$SRC" alpha
+  write_conf "$SRC"
+
+  run "$SCRIPT" sync --bogus
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--bogus"* ]]
+  [[ "$output" == *"Usage"* ]]
+  [ ! -L "$SKILLS/alpha" ]
 }

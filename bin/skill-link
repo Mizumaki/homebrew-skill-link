@@ -6,6 +6,7 @@
 #                        the file already exists)
 #   skill-link sync      Create symlinks for skills in configured dirs and
 #                        remove stale symlinks that no longer match the conf
+#                        (--dry-run: show the changes without making them)
 #   skill-link list      Show all skills and their link status
 #   skill-link clean     Remove broken symlinks from every target
 #
@@ -45,6 +46,9 @@ ENTRY_PREFIXES=()   # empty for plain entries
 SKILL_PATHS=()      # without trailing slash
 SKILL_NAMES=()      # basename, or "<prefix>:<basename>"
 
+# Set by `sync --dry-run`: report what would change without touching links.
+DRY_RUN=0
+
 usage() {
   cat <<EOF
 Usage: skill-link <command>
@@ -53,6 +57,7 @@ Commands:
   init      Create skill-link.conf from a template (only if it does not exist)
   sync      Create symlinks for skills in configured dirs and remove stale
             symlinks (those whose source dir is no longer in conf)
+            --dry-run  show what would change without touching anything
   list      Show all skills and their link status
   clean     Remove broken symlinks
 
@@ -232,41 +237,48 @@ _add_skill() {
   SKILL_NAMES+=("${prefix:+$prefix:}${skill_path##*/}")
 }
 
-# Link a single skill dir into a target dir. Relies on dynamic scope for the
-# caller's linked/kept/skipped counters.
+# Link a single skill dir into a target dir (only report it under DRY_RUN).
+# Relies on dynamic scope for the caller's linked/kept/skipped counters.
 _link_one() {
   local skill_path="$1" link_name="$2" target_dir="$3"
   local target="$target_dir/$link_name"
   if [[ -L "$target" && -e "$target" ]]; then
-    echo "  [keep] $link_name (already linked -> $(readlink "$target"))"
     ((kept++)) || true
   elif [[ -L "$target" && ! -e "$target" ]]; then
-    rm "$target"
-    ln -s "$skill_path" "$target"
+    (( DRY_RUN )) || { rm "$target"; ln -s "$skill_path" "$target"; }
     echo "  [relink] $link_name -> $skill_path (was broken)"
     ((linked++)) || true
   elif [[ -e "$target" ]]; then
     echo "  [skip] $link_name (exists but not a symlink)"
     ((skipped++)) || true
   else
-    ln -s "$skill_path" "$target"
+    (( DRY_RUN )) || ln -s "$skill_path" "$target"
     echo "  [link] $link_name -> $skill_path"
     ((linked++)) || true
   fi
 }
 
+# Link every resolved skill into every target. $1 is the number of stale
+# links sync removed (or would remove), reported in the dry-run summary.
 cmd_install() {
+  local removed="$1"
   _resolve_skills
-  local linked=0 kept=0 skipped=0 target_dir i
+  local linked=0 kept=0 skipped=0 target_dir i before
   for target_dir in "${TARGETS[@]}"; do
-    mkdir -p "$target_dir"
+    (( DRY_RUN )) || mkdir -p "$target_dir"
     echo "==> $target_dir"
+    before=$((linked + skipped))
     for i in "${!SKILL_PATHS[@]}"; do
       _link_one "${SKILL_PATHS[$i]}/" "${SKILL_NAMES[$i]}" "$target_dir"
     done
+    (( linked + skipped > before )) || echo "  (no changes)"
   done
   echo ""
-  echo "Done: $linked linked, $kept kept, $skipped skipped."
+  if (( DRY_RUN )); then
+    echo "Dry run: $linked would be linked, $removed would be removed, $kept kept, $skipped skipped."
+  else
+    echo "Done: $linked linked, $kept kept, $skipped skipped."
+  fi
 }
 
 cmd_list() {
@@ -362,6 +374,18 @@ _in_conf() {
 }
 
 cmd_sync() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) DRY_RUN=1 ;;
+      *)
+        echo "Error: unknown option for sync: $arg" >&2
+        usage >&2
+        exit 1
+        ;;
+    esac
+  done
+
   load_conf
 
   # Collect symlinks, across all targets, whose source is no longer in conf.
@@ -377,32 +401,33 @@ cmd_sync() {
 
   if [[ ${#stale[@]} -eq 0 ]]; then
     echo "No stale symlinks found."
+  elif (( DRY_RUN )); then
+    for entry in "${stale[@]}"; do
+      echo "  [remove] ${entry##*/} (from ${entry%/*})"
+    done
+  else
+    echo "The following symlinks will be removed:"
+    for entry in "${stale[@]}"; do
+      echo "  $entry -> $(readlink "$entry")"
+    done
     echo ""
-    cmd_install
-    return
+    if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+    echo ""
+
+    local removed=0
+    for entry in "${stale[@]}"; do
+      rm "$entry"
+      echo "  [removed] ${entry##*/} (from ${entry%/*})"
+      ((removed++)) || true
+    done
+    echo "$removed symlink(s) removed."
   fi
-
-  echo "The following symlinks will be removed:"
-  for entry in "${stale[@]}"; do
-    echo "  $entry -> $(readlink "$entry")"
-  done
-  echo ""
-  if ! read -r -p "Proceed? [y/N] " answer || [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 0
-  fi
   echo ""
 
-  local removed=0
-  for entry in "${stale[@]}"; do
-    rm "$entry"
-    echo "  [removed] ${entry##*/} (from ${entry%/*})"
-    ((removed++)) || true
-  done
-  echo "$removed symlink(s) removed."
-  echo ""
-
-  cmd_install
+  cmd_install "${#stale[@]}"
 }
 
 cmd_clean() {
@@ -428,7 +453,7 @@ cmd_clean() {
 
 case "${1:-}" in
   init)            cmd_init ;;
-  sync)            cmd_sync ;;
+  sync)            shift; cmd_sync "$@" ;;
   list)            cmd_list ;;
   clean)           cmd_clean ;;
   --version)       echo "skill-link $VERSION" ;;

@@ -47,7 +47,7 @@ teardown() {
   [[ "$output" == *"Done: 3 linked, 0 kept, 0 skipped."* ]]
 }
 
-@test "sync keeps a target that is already a valid symlink" {
+@test "sync keeps a valid symlink without printing a [keep] line" {
   make_skill "$SRC" alpha
   write_conf "$SRC"
   run "$SCRIPT" sync
@@ -56,9 +56,33 @@ teardown() {
 
   run "$SCRIPT" sync
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[keep] alpha"* ]]
-  [[ "$output" == *"already linked"* ]]
+  [[ "$output" != *"[keep]"* ]]
+  [[ "$output" != *"already linked"* ]]
+  [ -L "$SKILLS/alpha" ]
   [[ "$output" == *"Done: 0 linked, 1 kept, 0 skipped."* ]]
+}
+
+@test "sync prints (no changes) under a target where nothing changed" {
+  make_skill "$SRC" alpha
+  write_conf "$SRC"
+  run "$SCRIPT" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"(no changes)"* ]]
+
+  run "$SCRIPT" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"==> $SKILLS"$'\n'"  (no changes)"* ]]
+}
+
+@test "sync does not print (no changes) when a skill is skipped" {
+  make_skill "$SRC" alpha
+  write_conf "$SRC"
+  mkdir -p "$SKILLS/alpha"
+
+  run "$SCRIPT" sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[skip] alpha"* ]]
+  [[ "$output" != *"(no changes)"* ]]
 }
 
 @test "sync relinks a broken symlink that points inside a conf dir" {
